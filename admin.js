@@ -5,6 +5,7 @@
    ========================================================================== */
 const SUPABASE_URL = 'https://todcmniumymwnloujcgb.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_q2mRmPcKxNj0ZKxGp15jYg_8NOcWvSo'; // Su Publishable key de Supabase
+const MASTER_EMAIL = "admin@baccardi.com";
 const MASTER_PASSWORD = "baccardi2026";
 
 let supabase = null;
