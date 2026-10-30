@@ -4,7 +4,7 @@
    CONFIGURACIÓN DE SUPABASE
    ========================================================================== */
 const SUPABASE_URL = 'https://todcmniumymwnloujcgb.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_q2mRmPcKxNj0ZKxGp15jYg_8NOcWvSo'; 
+const SUPABASE_KEY = 'sb_publishable_q2mRmPcKxNj0ZKxGp15jYg_8NOcWvSo'; // Su Publishable key de Supabase
 const MASTER_PASSWORD = "baccardi2026";
 const MASTER_EMAIL = "admin@baccardi.com";
 
@@ -20,53 +20,68 @@ try {
 }
 
 /* ==========================================================================
-   CONTROL DE ACCESO (LOGIN VISUAL)
+   CANDADO DE ACCESO (FORMULARIO VISUAL DE LOGIN)
    ========================================================================== */
-function initAdminAuth() {
-  const loginForm = document.getElementById('loginForm') || document.querySelector('form');
+function verificarAcceso() {
+  const loginForm = document.getElementById('loginForm') || document.querySelector('.login-container form') || document.querySelector('form');
   
-  if (loginForm) {
-    loginForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      
-      const emailInput = document.getElementById('adminEmail') || document.querySelector('input[type="email"]');
-      const passInput = document.getElementById('adminPassword') || document.querySelector('input[type="password"]');
-      const errorMsg = document.getElementById('loginError') || document.querySelector('.error-msg, span[style*="color"]');
-
-      const email = emailInput ? emailInput.value.trim() : '';
-      const password = passInput ? passInput.value.trim() : '';
-
-      if (email === MASTER_EMAIL && password === MASTER_PASSWORD) {
-        console.log('Acceso concedido.');
-        mostrarPanelPrincipal();
-      } else {
-        console.log('Credenciales incorrectas.');
-        if (errorMsg) {
-          errorMsg.style.display = 'block';
-          errorMsg.textContent = 'Correo o contraseña incorrectos.';
-        } else {
-          alert('Correo o contraseña incorrectos.');
-        }
-      }
-    });
+  if (!loginForm) {
+    console.error('No se encontró el formulario de inicio de sesión.');
+    return;
   }
+
+  // Evitar auto-envíos o comportamientos extraños del navegador
+  loginForm.setAttribute('autocomplete', 'off');
+
+  loginForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+
+    const emailInput = document.getElementById('adminEmail') || loginForm.querySelector('input[type="email"]');
+    const passInput = document.getElementById('adminPassword') || loginForm.querySelector('input[type="password"]');
+    const errorMsg = document.getElementById('loginError') || loginForm.querySelector('.error-msg');
+
+    const email = emailInput ? emailInput.value.trim() : '';
+    const clave = passInput ? passInput.value.trim() : '';
+
+    console.log('Intento de acceso con correo:', email);
+
+    if (email === MASTER_EMAIL && clave === MASTER_PASSWORD) {
+      console.log('Clave correcta, mostrando el panel.');
+      document.getElementById('adminApp').style.display = 'block';
+      const bloqueo = document.getElementById('adminBloqueado') || document.querySelector('.login-container');
+      if (bloqueo) bloqueo.style.display = 'none';
+      iniciarPanelAdmin();
+    } else {
+      console.log('Clave incorrecta o cancelada.');
+      if (errorMsg) {
+        errorMsg.style.display = 'block';
+        errorMsg.textContent = 'Correo o contraseña incorrectos.';
+      } else {
+        alert('Correo o contraseña incorrectos.');
+      }
+    }
+  });
 }
 
-function mostrarPanelPrincipal() {
-  const bloqueo = document.getElementById('adminBloqueado') || document.querySelector('.login-container');
+function mostrarPantallaBloqueada() {
   const adminApp = document.getElementById('adminApp');
+  if (adminApp) adminApp.style.display = 'none';
+  const bloqueo = document.getElementById('adminBloqueado') || document.querySelector('.login-container');
+  if (bloqueo) bloqueo.style.display = 'flex';
+}
 
-  if (bloqueo) bloqueo.style.display = 'none';
-  if (adminApp) adminApp.style.display = 'block';
-
+/* ==========================================================================
+   INICIALIZACIÓN DEL PANEL (solo corre si la clave fue correcta)
+   ========================================================================== */
+function iniciarPanelAdmin() {
   cargarListaProductos();
   setupEventListenersAdmin();
 }
 
-document.addEventListener('DOMContentLoaded', initAdminAuth);
+document.addEventListener('DOMContentLoaded', verificarAcceso);
 
 /* ==========================================================================
-   CARGAR Y MOSTRAR LA LISTA DE PRODUCTOS ACTUALES
+   CARGAR Y MOSTRAR LA LISTA DE PRODUCTOS ACTUALES (CON BOTÓN ELIMINAR)
    ========================================================================== */
 async function cargarListaProductos() {
   const container = document.getElementById('adminProductList');
@@ -136,43 +151,42 @@ async function eliminarProducto(id) {
    ========================================================================== */
 function setupEventListenersAdmin() {
   const addForm = document.getElementById('addProductForm');
-  if (addForm) {
-    addForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
+  if (!addForm) return;
 
-      const nombre = document.getElementById('prodName').value;
-      const categoria = document.getElementById('prodCategory').value;
-      const descripcion = document.getElementById('prodDesc').value;
-      const precio = parseFloat(document.getElementById('prodPrice').value);
+  addForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
 
-      const imgSourceRadio = document.querySelector('input[name="imgSource"]:checked');
-      const imgSource = imgSourceRadio ? imgSourceRadio.value : 'url';
+    const nombre = document.getElementById('prodName').value;
+    const categoria = document.getElementById('prodCategory').value;
+    const descripcion = document.getElementById('prodDesc').value;
+    const precio = parseFloat(document.getElementById('prodPrice').value);
 
-      if (imgSource === 'url') {
-        const urlInput = document.getElementById('prodImgUrl');
-        const imagen = (urlInput && urlInput.value) ? urlInput.value : 'https://via.placeholder.com/300x200?text=Baccardi';
-        await guardarProductoSupabase(nombre, categoria, descripcion, precio, imagen);
-      } else {
-        const fileInput = document.getElementById('prodImgFile');
-        if (fileInput && fileInput.files && fileInput.files[0]) {
-          const submitBtn = document.querySelector('#addProductForm .btn-submit');
-          const textoOriginal = submitBtn ? submitBtn.textContent : null;
-          try {
-            if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Optimizando imagen...'; }
-            const imagenComprimida = await comprimirImagen(fileInput.files[0]);
-            await guardarProductoSupabase(nombre, categoria, descripcion, precio, imagenComprimida);
-          } catch (err) {
-            console.error('Error al comprimir la imagen:', err);
-            alert('No se pudo procesar la imagen. Intenta con otra foto.');
-          } finally {
-            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = textoOriginal; }
-          }
-        } else {
-          await guardarProductoSupabase(nombre, categoria, descripcion, precio, 'https://via.placeholder.com/300x200?text=Baccardi');
+    const imgSourceRadio = document.querySelector('input[name="imgSource"]:checked');
+    const imgSource = imgSourceRadio ? imgSourceRadio.value : 'url';
+
+    if (imgSource === 'url') {
+      const imagen = document.getElementById('prodImgUrl').value || 'https://via.placeholder.com/300x200?text=Baccardi';
+      guardarProductoSupabase(nombre, categoria, descripcion, precio, imagen);
+    } else {
+      const fileInput = document.getElementById('prodImgFile');
+      if (fileInput.files && fileInput.files[0]) {
+        const submitBtn = document.querySelector('#addProductForm .btn-submit');
+        const textoOriginal = submitBtn ? submitBtn.textContent : null;
+        try {
+          if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Optimizando imagen...'; }
+          const imagenComprimida = await comprimirImagen(fileInput.files[0]);
+          await guardarProductoSupabase(nombre, categoria, descripcion, precio, imagenComprimida);
+        } catch (err) {
+          console.error('Error al comprimir la imagen:', err);
+          alert('No se pudo procesar la imagen. Intenta con otra foto.');
+        } finally {
+          if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = textoOriginal; }
         }
+      } else {
+        guardarProductoSupabase(nombre, categoria, descripcion, precio, 'https://via.placeholder.com/300x200?text=Baccardi');
       }
-    });
-  }
+    }
+  });
 
   // Cambio de fuente de imagen (URL o Archivo local)
   document.querySelectorAll('input[name="imgSource"]').forEach(radio => {
@@ -191,7 +205,8 @@ function setupEventListenersAdmin() {
 }
 
 /**
- * Redimensiona y comprime una imagen en el navegador antes de guardarla.
+ * Redimensiona y comprime una imagen en el navegador antes de guardarla,
+ * para que una foto de celular quede en un archivo liviano formato WebP/JPEG.
  */
 function comprimirImagen(file, maxAncho = 800, calidad = 0.72) {
   return new Promise((resolve, reject) => {
