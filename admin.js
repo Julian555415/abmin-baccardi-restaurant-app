@@ -20,7 +20,7 @@ try {
 }
 
 /* ==========================================================================
-   CONTROL DE ACCESO CON EL FORMULARIO VISUAL
+   CONTROL DE ACCESO (LOGIN VISUAL)
    ========================================================================== */
 function initAdminAuth() {
   const loginForm = document.getElementById('loginForm') || document.querySelector('form');
@@ -66,7 +66,7 @@ function mostrarPanelPrincipal() {
 document.addEventListener('DOMContentLoaded', initAdminAuth);
 
 /* ==========================================================================
-   CARGAR Y GESTIONAR PRODUCTOS
+   CARGAR Y MOSTRAR LA LISTA DE PRODUCTOS ACTUALES
    ========================================================================== */
 async function cargarListaProductos() {
   const container = document.getElementById('adminProductList');
@@ -114,67 +114,117 @@ async function cargarListaProductos() {
 }
 
 async function eliminarProducto(id) {
-  if (!supabase) return;
+  if (!supabase) {
+    alert('No hay conexión con la base de datos.');
+    return;
+  }
   if (!confirm('¿Seguro que deseas eliminar este producto de la carta?')) return;
 
   const { error } = await supabase.from('menu').delete().eq('id', id);
+
   if (error) {
+    console.error('Error al eliminar en Supabase:', error);
     alert('Hubo un error al eliminar el producto.');
     return;
   }
+
   await cargarListaProductos();
 }
 
+/* ==========================================================================
+   FORMULARIO: AGREGAR PRODUCTO NUEVO (CON COMPRESIÓN DE IMAGEN)
+   ========================================================================== */
 function setupEventListenersAdmin() {
   const addForm = document.getElementById('addProductForm');
   if (addForm) {
     addForm.addEventListener('submit', async (e) => {
       e.preventDefault();
+
       const nombre = document.getElementById('prodName').value;
       const categoria = document.getElementById('prodCategory').value;
       const descripcion = document.getElementById('prodDesc').value;
       const precio = parseFloat(document.getElementById('prodPrice').value);
-      const imgSource = document.querySelector('input[name="imgSource"]:checked')?.value || 'url';
 
-      let imagen = 'https://via.placeholder.com/300x200?text=Baccardi';
+      const imgSourceRadio = document.querySelector('input[name="imgSource"]:checked');
+      const imgSource = imgSourceRadio ? imgSourceRadio.value : 'url';
+
       if (imgSource === 'url') {
-        imagen = document.getElementById('prodImgUrl').value || imagen;
+        const urlInput = document.getElementById('prodImgUrl');
+        const imagen = (urlInput && urlInput.value) ? urlInput.value : 'https://via.placeholder.com/300x200?text=Baccardi';
         await guardarProductoSupabase(nombre, categoria, descripcion, precio, imagen);
       } else {
         const fileInput = document.getElementById('prodImgFile');
-        if (fileInput && fileInput.files[0]) {
+        if (fileInput && fileInput.files && fileInput.files[0]) {
+          const submitBtn = document.querySelector('#addProductForm .btn-submit');
+          const textoOriginal = submitBtn ? submitBtn.textContent : null;
           try {
-            imagen = await comprimirImagen(fileInput.files[0]);
-            await guardarProductoSupabase(nombre, categoria, descripcion, precio, imagen);
+            if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Optimizando imagen...'; }
+            const imagenComprimida = await comprimirImagen(fileInput.files[0]);
+            await guardarProductoSupabase(nombre, categoria, descripcion, precio, imagenComprimida);
           } catch (err) {
-            alert('No se pudo procesar la imagen.');
+            console.error('Error al comprimir la imagen:', err);
+            alert('No se pudo procesar la imagen. Intenta con otra foto.');
+          } finally {
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = textoOriginal; }
           }
         } else {
-          await guardarProductoSupabase(nombre, categoria, descripcion, precio, imagen);
+          await guardarProductoSupabase(nombre, categoria, descripcion, precio, 'https://via.placeholder.com/300x200?text=Baccardi');
         }
       }
     });
   }
+
+  // Cambio de fuente de imagen (URL o Archivo local)
+  document.querySelectorAll('input[name="imgSource"]').forEach(radio => {
+    radio.addEventListener('change', (e) => {
+      const prodImgUrl = document.getElementById('prodImgUrl');
+      const prodImgFile = document.getElementById('prodImgFile');
+      if (e.target.value === 'url') {
+        if (prodImgUrl) prodImgUrl.style.display = 'block';
+        if (prodImgFile) prodImgFile.style.display = 'none';
+      } else {
+        if (prodImgUrl) prodImgUrl.style.display = 'none';
+        if (prodImgFile) prodImgFile.style.display = 'block';
+      }
+    });
+  });
 }
 
+/**
+ * Redimensiona y comprime una imagen en el navegador antes de guardarla.
+ */
 function comprimirImagen(file, maxAncho = 800, calidad = 0.72) {
   return new Promise((resolve, reject) => {
+    if (!file.type.startsWith('image/')) {
+      reject(new Error('El archivo seleccionado no es una imagen.'));
+      return;
+    }
+
     const reader = new FileReader();
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo.'));
     reader.onload = (e) => {
       const img = new Image();
+      img.onerror = () => reject(new Error('No se pudo procesar la imagen.'));
       img.onload = () => {
         let ancho = img.width;
         let alto = img.height;
+
         if (ancho > maxAncho) {
           alto = Math.round((alto * maxAncho) / ancho);
           ancho = maxAncho;
         }
+
         const canvas = document.createElement('canvas');
         canvas.width = ancho;
         canvas.height = alto;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, ancho, alto);
-        resolve(canvas.toDataURL('image/webp', calidad));
+
+        let dataUrl = canvas.toDataURL('image/webp', calidad);
+        if (!dataUrl || dataUrl.indexOf('data:image/webp') !== 0) {
+          dataUrl = canvas.toDataURL('image/jpeg', calidad);
+        }
+        resolve(dataUrl);
       };
       img.src = e.target.result;
     };
@@ -183,14 +233,24 @@ function comprimirImagen(file, maxAncho = 800, calidad = 0.72) {
 }
 
 async function guardarProductoSupabase(nombre, categoria, descripcion, precio, imagen) {
-  const { error } = await supabase.from('menu').insert([{ nombre, categoria, descripcion, precio, imagen }]);
-  if (error) {
-    alert('Hubo un error al guardar el producto.');
+  if (!supabase) {
+    alert('No hay conexión con la base de datos. Recarga la página e intenta de nuevo.');
     return;
   }
+  const { error } = await supabase
+    .from('menu')
+    .insert([{ nombre, categoria, descripcion, precio, imagen }]);
+
+  if (error) {
+    console.error('Error al guardar en Supabase:', error);
+    alert('Hubo un error al guardar el producto en la base de datos.');
+    return;
+  }
+
   await cargarListaProductos();
-  document.getElementById('addProductForm').reset();
-  alert('Producto agregado con éxito.');
+  const form = document.getElementById('addProductForm');
+  if (form) form.reset();
+  alert('Producto agregado con éxito a la carta.');
 }
 
 })();
